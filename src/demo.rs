@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::process::Command;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DemoReply {
@@ -29,18 +28,7 @@ pub struct DisconnectReply {
 
 pub struct DemoAccountClient {
     pub endpoint: String,
-}
-
-fn url_encode(input: &str) -> String {
-    let mut out = String::new();
-    for b in input.bytes() {
-        if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' || b == b'~' {
-            out.push(b as char);
-        } else {
-            out.push_str(&format!("%{:02X}", b));
-        }
-    }
-    out
+    client: reqwest::Client,
 }
 
 impl DemoAccountClient {
@@ -52,14 +40,21 @@ impl DemoAccountClient {
             .trim_end_matches('/');
         Self {
             endpoint: format!("https://{}", clean),
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(120))
+                .build()
+                .unwrap_or_default(),
         }
     }
 
-    pub fn open_demo_account(&self, server: &str, api_key: &str) -> Result<DemoReply, Box<dyn std::error::Error>> {
-        let url = format!("{}/DemoAccount/Open?server={}", self.endpoint, server);
-        let output = Command::new("curl.exe")
-            .args(["-s", "-H", &format!("APIKey: {}", api_key), "-H", "User-Agent: RustCopier/1.0.0", &url])
-            .output()?;
+    pub async fn open_demo_account(&self, server: &str, api_key: &str) -> Result<DemoReply, Box<dyn std::error::Error>> {
+        let url = format!("{}/DemoAccount/Open", self.endpoint);
+        let resp = self.client.get(&url)
+            .query(&[("server", server)])
+            .header("APIKey", api_key)
+            .header("User-Agent", "RustCopier/1.0.0")
+            .send()
+            .await?;
 
         #[derive(Deserialize)]
         struct RawDemo {
@@ -73,7 +68,7 @@ impl DemoAccountClient {
             server: String,
         }
 
-        let raw: RawDemo = serde_json::from_slice(&output.stdout)?;
+        let raw: RawDemo = resp.json().await?;
         Ok(DemoReply {
             result_code: raw.result_code,
             login: raw.login.parse::<u64>().unwrap_or(0),
@@ -83,12 +78,18 @@ impl DemoAccountClient {
         })
     }
 
-    pub fn connect_ex(&self, user: u64, password: &str, server: &str, api_key: &str) -> Result<ConnectExReply, Box<dyn std::error::Error>> {
-        let encoded_pass = url_encode(password);
-        let url = format!("{}/ConnectEx?user={}&password={}&mtClusterName={}", self.endpoint, user, encoded_pass, server);
-        let output = Command::new("curl.exe")
-            .args(["-s", "-H", &format!("APIKey: {}", api_key), "-H", "User-Agent: RustCopier/1.0.0", &url])
-            .output()?;
+    pub async fn connect_ex(&self, user: u64, password: &str, server: &str, api_key: &str) -> Result<ConnectExReply, Box<dyn std::error::Error>> {
+        let url = format!("{}/ConnectEx", self.endpoint);
+        let resp = self.client.get(&url)
+            .query(&[
+                ("user", user.to_string().as_str()),
+                ("password", password),
+                ("mtClusterName", server),
+            ])
+            .header("APIKey", api_key)
+            .header("User-Agent", "RustCopier/1.0.0")
+            .send()
+            .await?;
 
         #[derive(Deserialize)]
         struct Data {
@@ -102,18 +103,21 @@ impl DemoAccountClient {
             data: Data,
         }
 
-        let raw: RawConnect = serde_json::from_slice(&output.stdout)?;
+        let raw: RawConnect = resp.json().await?;
         Ok(ConnectExReply {
             terminal_instance_guid: raw.data.terminal_instance_guid,
             terminal_type: raw.data.terminal_type,
         })
     }
 
-    pub fn disconnect(&self, terminal_id: &str, api_key: &str) -> Result<DisconnectReply, Box<dyn std::error::Error>> {
+    pub async fn disconnect(&self, terminal_id: &str, api_key: &str) -> Result<DisconnectReply, Box<dyn std::error::Error>> {
         let url = format!("{}/Disconnect", self.endpoint);
-        let output = Command::new("curl.exe")
-            .args(["-s", "-H", &format!("APIKey: {}", api_key), "-H", &format!("id: {}", terminal_id), "-H", "User-Agent: RustCopier/1.0.0", &url])
-            .output()?;
+        let resp = self.client.get(&url)
+            .header("APIKey", api_key)
+            .header("id", terminal_id)
+            .header("User-Agent", "RustCopier/1.0.0")
+            .send()
+            .await?;
 
         #[derive(Deserialize)]
         struct Data {
@@ -127,7 +131,7 @@ impl DemoAccountClient {
             data: Data,
         }
 
-        let raw: RawDisc = serde_json::from_slice(&output.stdout)?;
+        let raw: RawDisc = resp.json().await?;
         Ok(DisconnectReply {
             unique_identifier: raw.data.unique_identifier,
             full_life_time_seconds: raw.data.full_life_time_seconds,
