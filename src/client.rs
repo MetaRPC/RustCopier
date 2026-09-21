@@ -7,11 +7,11 @@ pub struct CopierService {
 }
 
 impl CopierService {
-    pub async fn connect(endpoint: &str, user_key: &str, manager_key: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn connect(endpoint: &str, user_key: &str) -> Result<Self, Box<dyn std::error::Error>> {
         Ok(Self {
             endpoint: endpoint.to_string(),
             user_key: user_key.to_string(),
-            manager_key: if manager_key.is_empty() { user_key.to_string() } else { manager_key.to_string() },
+            manager_key: user_key.to_string(),
         })
     }
 

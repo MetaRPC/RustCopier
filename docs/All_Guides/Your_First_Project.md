@@ -24,12 +24,11 @@ use rustcopier::{CopierService, Account, StartRequest};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. Initialize Copier gRPC Client
-    let client = CopierService::connect("https://copy.mrpc.pro:443", "YOUR_USER_KEY", "YOUR_MANAGER_KEY").await?;
+    let client = CopierService::connect("https://copy.mrpc.pro:443", "YOUR_USER_KEY", "").await?;
 
     // 2. Start Copier
     let reply = client.start(StartRequest {
         user_key: "YOUR_USER_KEY".into(),
-        manager_key: "YOUR_MANAGER_KEY".into(),
         master: Account { r#type: "MT5".into(), user: 10001, password: "demoPassword1".into(), server: "MetaQuotes-Demo".into(), name: "Master".into() },
         slave: Account { r#type: "MT5".into(), user: 10002, password: "demoPassword2".into(), server: "MetaQuotes-Demo".into(), name: "Slave".into() },
         risk_type: "LotMultiplier".into(),
