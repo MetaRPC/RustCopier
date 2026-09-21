@@ -46,6 +46,7 @@ impl CopierService {
                 password: req.master.password,
                 server: req.master.server,
                 name: req.master.name,
+                id: req.master.id,
             }),
             slave: Some(proto::Account {
                 r#type: req.slave.r#type,
@@ -53,6 +54,7 @@ impl CopierService {
                 password: req.slave.password,
                 server: req.slave.server,
                 name: req.slave.name,
+                id: req.slave.id,
             }),
             risk_type: req.risk_type,
             risk_value: req.risk_value,
@@ -66,6 +68,7 @@ impl CopierService {
         let mut request = Request::new(proto_req);
         request.metadata_mut().insert("authorization", format!("Bearer {}", self.user_key).parse()?);
         request.metadata_mut().insert("x-metarpc-client-sdk", "RustCopier/1.0.0".parse()?);
+        request.set_timeout(std::time::Duration::from_secs(180));
 
         match client.start(request).await {
             Ok(resp) => {

@@ -7,6 +7,7 @@ pub struct Account {
     pub password: String,
     pub server: String,
     pub name: String,
+    pub id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
