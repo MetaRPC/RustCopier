@@ -49,7 +49,7 @@ impl DemoAccountClient {
     }
 
     pub async fn open_demo_account(&self, server: &str, api_key: &str) -> Result<DemoReply, Box<dyn std::error::Error>> {
-        for attempt in 1..=5 {
+        for _attempt in 1..=5 {
             let url = format!("{}/DemoAccount/Open", self.endpoint);
             let resp = self.client.get(&url)
                 .query(&[("server", server)])
