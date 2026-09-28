@@ -189,13 +189,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 9. Cleanly Disconnect Terminal Sessions
     log_info!("\n[9] Disconnecting terminal sessions cleanly via /Disconnect...");
     if !master_guid.is_empty() {
-        match demo.disconnect(&master_guid, api_key).await {
+        match demo.disconnect_with_options(&master_guid, api_key, true).await {
             Ok(disc) => log_info!("    Master Terminal Cleanly Disconnected: {} (Lifetime: {}s)", disc.unique_identifier, disc.full_life_time_seconds),
             Err(e) => log_info!("    Master disconnect error: {}", e),
         }
     }
     if !slave_guid.is_empty() {
-        match demo.disconnect(&slave_guid, api_key).await {
+        match demo.disconnect_with_options(&slave_guid, api_key, true).await {
             Ok(disc) => log_info!("    Slave Terminal Cleanly Disconnected:  {} (Lifetime: {}s)", disc.unique_identifier, disc.full_life_time_seconds),
             Err(e) => log_info!("    Slave disconnect error: {}", e),
         }

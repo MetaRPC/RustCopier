@@ -134,13 +134,19 @@ impl DemoAccountClient {
     }
 
     pub async fn disconnect(&self, terminal_id: &str, api_key: &str) -> Result<DisconnectReply, Box<dyn std::error::Error>> {
-        let url = format!("{}/Disconnect", self.endpoint);
-        let resp = self.client.get(&url)
+        self.disconnect_with_options(terminal_id, api_key, false).await
+    }
+
+    pub async fn disconnect_with_options(&self, terminal_id: &str, api_key: &str, delete: bool) -> Result<DisconnectReply, Box<dyn std::error::Error>> {
+        let url = format!("{}/Disconnect?delete={}", self.endpoint, delete);
+        let mut req = self.client.get(&url)
             .header("APIKey", api_key)
             .header("id", terminal_id)
-            .header("User-Agent", "RustCopier/1.0.0")
-            .send()
-            .await?;
+            .header("User-Agent", "RustCopier/1.0.0");
+        if delete {
+            req = req.header("delete", "true");
+        }
+        let resp = req.send().await?;
 
         let text = resp.text().await?;
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
