@@ -4,10 +4,10 @@ Welcome to **RustCopier**, the official Rust client library for MetaRPC's ultra-
 
 ## Installation
 
-Install RustCopier using your language's package manager:
+RustCopier is not published on a package registry; get it from the repository:
 
 ```bash
-cargo add rustcopier
+git clone https://github.com/MetaRPC/RustCopier.git
 ```
 
 ## Infrastructure Endpoints

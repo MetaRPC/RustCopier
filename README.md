@@ -8,7 +8,7 @@ Official Rust SDK for the MetaRPC Trade Copier high-performance trade replicatio
 ## Installation
 
 ```bash
-cargo add rustcopier
+git clone https://github.com/MetaRPC/RustCopier.git
 ```
 
 ## 🏃 How to Run Examples
