@@ -2,7 +2,7 @@
 /// A trading account to connect to.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Account {
-    /// "MT4" or "MT5".
+    /// MT4, MT5, MT4_MTAPI, MT5_MTAPI, MT4_MRPC, MT5_MRPC, CT or TL.
     #[prost(string, tag = "1")]
     pub r#type: ::prost::alloc::string::String,
     #[prost(uint64, tag = "2")]
