@@ -12,6 +12,10 @@ async fn main() {
     }
 }
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    let platform = std::env::var("COPIER_PLATFORM").unwrap_or_else(|_| "MT5".into());
+    if platform != "MT4" && platform != "MT5" {
+        return Err("COPIER_PLATFORM must be MT4 or MT5".into());
+    }
     let v: Vec<String> = io::stdin()
         .lock()
         .lines()
@@ -24,7 +28,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let c = CopierService::connect(&v[0], &v[1]).await?;
     let acc = |i: usize| -> Result<Account, Box<dyn std::error::Error>> {
         Ok(Account {
-            r#type: "MT5".into(),
+            r#type: platform.clone(),
             user: v[i].parse()?,
             password: v[i + 1].clone(),
             server: v[i + 2].clone(),
