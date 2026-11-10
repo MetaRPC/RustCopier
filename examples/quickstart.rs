@@ -10,6 +10,7 @@ macro_rules! log_info {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if std::env::var("MRPC_LIVE_TESTS").unwrap_or_default() != "1" { return Err("Set MRPC_LIVE_TESTS=1 explicitly to run demo trading".into()); }
     log_info!("=== MetaRPC RustCopier Trade Replication Quick Start ===");
     let api_key_owned = std::env::args().nth(1)
         .or_else(|| std::env::var("MRPC_API_KEY").ok())
