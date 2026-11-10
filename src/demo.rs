@@ -48,56 +48,79 @@ impl DemoAccountClient {
         }
     }
 
-    pub async fn open_demo_account(&self, server: &str, api_key: &str) -> Result<DemoReply, Box<dyn std::error::Error>> {
-        for _attempt in 1..=5 {
-            let url = format!("{}/DemoAccount/Open", self.endpoint);
-            let resp = self.client.get(&url)
-                .query(&[("server", server)])
-                .header("APIKey", api_key)
-                .header("User-Agent", "RustCopier/1.0.0")
-                .send()
-                .await;
+    pub async fn open_demo_account(
+        &self,
+        server: &str,
+        api_key: &str,
+    ) -> Result<DemoReply, Box<dyn std::error::Error>> {
+        // Provisioning is not idempotent: do not create more accounts on a retry.
+        let url = format!("{}/DemoAccount/Open", self.endpoint);
+        let resp = self
+            .client
+            .get(&url)
+            .query(&[("server", server)])
+            .header("APIKey", api_key)
+            .header("User-Agent", "RustCopier/1.0.0")
+            .send()
+            .await?;
 
-            if let Ok(r) = resp {
-                if let Ok(text) = r.text().await {
-                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
-                        let login_str = v.get("login").and_then(|l| {
-                            if l.is_string() {
-                                l.as_str().map(|s| s.to_string())
-                            } else if l.is_number() {
-                                l.as_u64().map(|n| n.to_string())
-                            } else {
-                                None
-                            }
-                        }).unwrap_or_default();
-
-                        let password = v.get("password").and_then(|p| p.as_str()).unwrap_or("").to_string();
-                        let investor = v.get("investor").and_then(|p| p.as_str()).unwrap_or("").to_string();
-                        let srv = v.get("server").and_then(|p| p.as_str()).unwrap_or(server).to_string();
-                        let result_code = v.get("resultCode").and_then(|c| c.as_i64()).unwrap_or(0) as i32;
-
-                        if let Ok(login) = login_str.parse::<u64>() {
-                            if login > 0 && !password.is_empty() {
-                                return Ok(DemoReply {
-                                    result_code,
-                                    login,
-                                    password,
-                                    investor,
-                                    server: srv,
-                                });
-                            }
-                        }
-                    }
+        let text = checked_demo_response(resp).await?;
+        let v: serde_json::Value = serde_json::from_str(&text)?;
+        let login_str = v
+            .get("login")
+            .and_then(|l| {
+                if l.is_string() {
+                    l.as_str().map(|s| s.to_string())
+                } else if l.is_number() {
+                    l.as_u64().map(|n| n.to_string())
+                } else {
+                    None
                 }
+            })
+            .unwrap_or_default();
+
+        let password = v
+            .get("password")
+            .and_then(|p| p.as_str())
+            .unwrap_or("")
+            .to_string();
+        let investor = v
+            .get("investor")
+            .and_then(|p| p.as_str())
+            .unwrap_or("")
+            .to_string();
+        let srv = v
+            .get("server")
+            .and_then(|p| p.as_str())
+            .unwrap_or(server)
+            .to_string();
+        let result_code = v.get("resultCode").and_then(|c| c.as_i64()).unwrap_or(0) as i32;
+
+        if let Ok(login) = login_str.parse::<u64>() {
+            if login > 0 && !password.is_empty() {
+                return Ok(DemoReply {
+                    result_code,
+                    login,
+                    password,
+                    investor,
+                    server: srv,
+                });
             }
-            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
         }
-        Err("Failed to provision demo account after 5 attempts".into())
+        Err("Demo provisioning returned no account credentials".into())
     }
 
-    pub async fn connect_ex(&self, user: u64, password: &str, server: &str, api_key: &str) -> Result<ConnectExReply, Box<dyn std::error::Error>> {
+    pub async fn connect_ex(
+        &self,
+        user: u64,
+        password: &str,
+        server: &str,
+        api_key: &str,
+    ) -> Result<ConnectExReply, Box<dyn std::error::Error>> {
         let url = format!("{}/ConnectEx", self.endpoint);
-        let resp = self.client.get(&url)
+        let resp = self
+            .client
+            .get(&url)
             .query(&[
                 ("user", user.to_string().as_str()),
                 ("password", password),
@@ -108,14 +131,16 @@ impl DemoAccountClient {
             .send()
             .await?;
 
-        let text = resp.text().await?;
+        let text = checked_demo_response(resp).await?;
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
-            let guid = v.get("data")
+            let guid = v
+                .get("data")
                 .and_then(|d| d.get("terminalInstanceGuid"))
                 .and_then(|g| g.as_str())
                 .unwrap_or("")
                 .to_string();
-            let term_type = v.get("data")
+            let term_type = v
+                .get("data")
                 .and_then(|d| d.get("terminalType"))
                 .and_then(|t| t.as_str())
                 .unwrap_or("MT5")
@@ -133,13 +158,25 @@ impl DemoAccountClient {
         Err(format!("Invalid ConnectEx response: {}", text).into())
     }
 
-    pub async fn disconnect(&self, terminal_id: &str, api_key: &str) -> Result<DisconnectReply, Box<dyn std::error::Error>> {
-        self.disconnect_with_options(terminal_id, api_key, false).await
+    pub async fn disconnect(
+        &self,
+        terminal_id: &str,
+        api_key: &str,
+    ) -> Result<DisconnectReply, Box<dyn std::error::Error>> {
+        self.disconnect_with_options(terminal_id, api_key, false)
+            .await
     }
 
-    pub async fn disconnect_with_options(&self, terminal_id: &str, api_key: &str, delete: bool) -> Result<DisconnectReply, Box<dyn std::error::Error>> {
+    pub async fn disconnect_with_options(
+        &self,
+        terminal_id: &str,
+        api_key: &str,
+        delete: bool,
+    ) -> Result<DisconnectReply, Box<dyn std::error::Error>> {
         let url = format!("{}/Disconnect?delete={}", self.endpoint, delete);
-        let mut req = self.client.get(&url)
+        let mut req = self
+            .client
+            .get(&url)
             .header("APIKey", api_key)
             .header("id", terminal_id)
             .header("User-Agent", "RustCopier/1.0.0");
@@ -148,14 +185,16 @@ impl DemoAccountClient {
         }
         let resp = req.send().await?;
 
-        let text = resp.text().await?;
+        let text = checked_demo_response(resp).await?;
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
-            let uid = v.get("data")
+            let uid = v
+                .get("data")
                 .and_then(|d| d.get("uniqueIdentifier"))
                 .and_then(|u| u.as_str())
                 .unwrap_or(terminal_id)
                 .to_string();
-            let life = v.get("data")
+            let life = v
+                .get("data")
                 .and_then(|d| d.get("fullLifeTimeSeconds"))
                 .and_then(|l| l.as_i64())
                 .unwrap_or(0) as i32;
@@ -170,9 +209,18 @@ impl DemoAccountClient {
         })
     }
 
-    pub async fn order_send(&self, terminal_id: &str, symbol: &str, operation: &str, volume: f64, api_key: &str) -> Result<u64, Box<dyn std::error::Error>> {
+    pub async fn order_send(
+        &self,
+        terminal_id: &str,
+        symbol: &str,
+        operation: &str,
+        volume: f64,
+        api_key: &str,
+    ) -> Result<u64, Box<dyn std::error::Error>> {
         let url = format!("{}/OrderSend", self.endpoint);
-        let resp = self.client.get(&url)
+        let resp = self
+            .client
+            .get(&url)
             .query(&[
                 ("id", terminal_id),
                 ("symbol", symbol),
@@ -187,14 +235,22 @@ impl DemoAccountClient {
             .header("User-Agent", "RustCopier/1.0.0")
             .send()
             .await?;
-        let text = resp.text().await?;
+        let text = checked_demo_response(resp).await?;
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
             if let Some(d) = v.get("data") {
-                if let Some(t) = d.get("order").or_else(|| d.get("ticket")).and_then(|t| t.as_u64()) {
+                if let Some(t) = d
+                    .get("order")
+                    .or_else(|| d.get("ticket"))
+                    .and_then(|t| t.as_u64())
+                {
                     return Ok(t);
                 }
             }
-            if let Some(t) = v.get("order").or_else(|| v.get("ticket")).and_then(|t| t.as_u64()) {
+            if let Some(t) = v
+                .get("order")
+                .or_else(|| v.get("ticket"))
+                .and_then(|t| t.as_u64())
+            {
                 return Ok(t);
             }
             if let Some(n) = v.as_u64() {
@@ -207,15 +263,21 @@ impl DemoAccountClient {
         Ok(0)
     }
 
-    pub async fn opened_orders(&self, terminal_id: &str, api_key: &str) -> Result<Vec<Position>, Box<dyn std::error::Error>> {
+    pub async fn opened_orders(
+        &self,
+        terminal_id: &str,
+        api_key: &str,
+    ) -> Result<Vec<Position>, Box<dyn std::error::Error>> {
         let url = format!("{}/OpenedOrders?id={}", self.endpoint, terminal_id);
-        let resp = self.client.get(&url)
+        let resp = self
+            .client
+            .get(&url)
             .header("APIKey", api_key)
             .header("id", terminal_id)
             .header("User-Agent", "RustCopier/1.0.0")
             .send()
             .await?;
-        let text = resp.text().await?;
+        let text = checked_demo_response(resp).await?;
         if let Ok(positions) = serde_json::from_str::<Vec<Position>>(&text) {
             return Ok(positions);
         }
@@ -245,9 +307,16 @@ impl DemoAccountClient {
         Ok(vec![])
     }
 
-    pub async fn order_close(&self, terminal_id: &str, ticket: u64, api_key: &str) -> Result<String, Box<dyn std::error::Error>> {
+    pub async fn order_close(
+        &self,
+        terminal_id: &str,
+        ticket: u64,
+        api_key: &str,
+    ) -> Result<String, Box<dyn std::error::Error>> {
         let url = format!("{}/OrderClose", self.endpoint);
-        let resp = self.client.get(&url)
+        let resp = self
+            .client
+            .get(&url)
             .query(&[
                 ("id", terminal_id),
                 ("ticket", ticket.to_string().as_str()),
@@ -259,7 +328,7 @@ impl DemoAccountClient {
             .header("User-Agent", "RustCopier/1.0.0")
             .send()
             .await?;
-        Ok(resp.text().await?)
+        checked_demo_response(resp).await
     }
 }
 
@@ -278,9 +347,52 @@ pub struct Position {
 pub fn to_hyphen_guid(guid: &str) -> String {
     let clean = guid.trim_start_matches("mt5_live_").replace('-', "");
     if clean.len() == 32 {
-        format!("{}-{}-{}-{}-{}", &clean[0..8], &clean[8..12], &clean[12..16], &clean[16..20], &clean[20..32])
+        format!(
+            "{}-{}-{}-{}-{}",
+            &clean[0..8],
+            &clean[8..12],
+            &clean[12..16],
+            &clean[16..20],
+            &clean[20..32]
+        )
     } else {
         guid.to_string()
     }
 }
 
+async fn checked_demo_response(
+    response: reqwest::Response,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let response = response.error_for_status()?;
+    let text = response.text().await?;
+    check_demo_envelope(&text)?;
+    Ok(text)
+}
+fn check_demo_envelope(text: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let value: serde_json::Value = serde_json::from_str(text)?;
+    if let Some(error) = value
+        .get("error")
+        .filter(|e| !e.is_null() && **e != serde_json::Value::Bool(false))
+    {
+        return Err(format!(
+            "MRPC request failed: {}",
+            error
+                .get("errorCode")
+                .and_then(|v| v.as_str())
+                .unwrap_or("API_ERROR")
+        )
+        .into());
+    }
+    Ok(())
+}
+#[cfg(test)]
+mod envelope_tests {
+    use super::*;
+    #[test]
+    fn refuses_error_envelope() {
+        let error=check_demo_envelope(r#"{"error":{"errorCode":"MAX_TERMINALS_PER_POD_REACHED","stackTrace":"private trace"}}"#).unwrap_err().to_string();
+        assert!(error.contains("MAX_TERMINALS_PER_POD_REACHED"));
+        assert!(!error.contains("private trace"));
+        assert!(check_demo_envelope(r#"{"data":{"positionInfos":[]}}"#).is_ok());
+    }
+}
