@@ -13,7 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     log_info!("=== MetaRPC RustCopier Trade Replication Quick Start ===");
     let api_key_owned = std::env::args().nth(1)
         .or_else(|| std::env::var("MRPC_API_KEY").ok())
-        .unwrap_or_else(|| "TRIAL".to_string());
+        .unwrap_or_else(|| "".to_string());
     let api_key = api_key_owned.as_str();
 
     let demo = DemoAccountClient::new("https://mt5.mrpc.pro");

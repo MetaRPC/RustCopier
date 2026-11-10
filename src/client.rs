@@ -14,12 +14,12 @@ pub struct CopierService {
 
 impl CopierService {
     pub async fn connect(endpoint: &str, user_key: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let clean = endpoint
-            .trim_start_matches("http://")
-            .trim_start_matches("https://")
-            .trim_end_matches(":443")
-            .trim_end_matches('/');
-        let uri = format!("https://{}:443", clean);
+        if user_key.is_empty() || user_key.eq_ignore_ascii_case("TRIAL") || !user_key.bytes().all(|c| (33..=126).contains(&c)) {
+            return Err("A real owner API key is required (printable ASCII, no whitespace).".into());
+        }
+        let clean = endpoint.trim_end_matches('/');
+        if clean.starts_with("http://") { return Err("Use a TLS (https) copier endpoint.".into()); }
+        let uri = if clean.starts_with("https://") { clean.to_string() } else { format!("https://{}", clean) };
         let tls = ClientTlsConfig::new().with_native_roots();
         let channel = Channel::from_shared(uri)?
             .tls_config(tls)?
@@ -65,10 +65,7 @@ impl CopierService {
             reverse_copy: req.reverse_copy,
         };
 
-        let mut request = Request::new(proto_req);
-        request.metadata_mut().insert("authorization", format!("Bearer {}", self.user_key).parse()?);
-        request.metadata_mut().insert("x-metarpc-client-sdk", "RustCopier/1.0.0".parse()?);
-        request.set_timeout(std::time::Duration::from_secs(180));
+        let request = authenticated_request(proto_req, &self.user_key)?;
 
         match client.start(request).await {
             Ok(resp) => {
@@ -92,9 +89,7 @@ impl CopierService {
         let proto_req = proto::ListRequest {
             user_key: self.user_key.clone(),
         };
-        let mut request = Request::new(proto_req);
-        request.metadata_mut().insert("authorization", format!("Bearer {}", self.user_key).parse()?);
-        request.metadata_mut().insert("x-metarpc-client-sdk", "RustCopier/1.0.0".parse()?);
+        let request = authenticated_request(proto_req, &self.user_key)?;
 
         match client.list(request).await {
             Ok(resp) => {
@@ -137,9 +132,7 @@ impl CopierService {
             copier_id: copier_id.to_string(),
             paused,
         };
-        let mut request = Request::new(proto_req);
-        request.metadata_mut().insert("authorization", format!("Bearer {}", self.user_key).parse()?);
-        request.metadata_mut().insert("x-metarpc-client-sdk", "RustCopier/1.0.0".parse()?);
+        let request = authenticated_request(proto_req, &self.user_key)?;
 
         match client.pause(request).await {
             Ok(resp) => {
@@ -162,9 +155,7 @@ impl CopierService {
             user_key: self.user_key.clone(),
             copier_id: copier_id.to_string(),
         };
-        let mut request = Request::new(proto_req);
-        request.metadata_mut().insert("authorization", format!("Bearer {}", self.user_key).parse()?);
-        request.metadata_mut().insert("x-metarpc-client-sdk", "RustCopier/1.0.0".parse()?);
+        let request = authenticated_request(proto_req, &self.user_key)?;
 
         match client.remove(request).await {
             Ok(resp) => {
@@ -178,6 +169,29 @@ impl CopierService {
                 ok: false,
                 error: e.message().to_string(),
             }),
+        }
+    }
+}
+
+fn authenticated_request<T>(body: T, key: &str) -> Result<Request<T>, Box<dyn std::error::Error>> {
+    let mut request = Request::new(body);
+    request.metadata_mut().insert("apikey", key.parse()?);
+    request.metadata_mut().insert("x-metarpc-client-sdk", "RustCopier/1.0.0".parse()?);
+    request.set_timeout(std::time::Duration::from_secs(180));
+    Ok(request)
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test] fn metadata_and_deadline() {
+        let request=authenticated_request("body", "owner-test").unwrap();
+        assert_eq!(request.metadata().get("apikey").unwrap(), "owner-test");
+        assert!(request.metadata().contains_key("grpc-timeout"));
+        assert_eq!(*request.get_ref(), "body");
+    }
+    #[tokio::test] async fn rejects_bad_keys_before_connecting() {
+        for key in ["", "TRIAL", "trial", "a b", "x\r\nInjected: yes"] {
+            assert!(CopierService::connect("https://copy.mrpc.pro",key).await.is_err());
         }
     }
 }
